@@ -41,3 +41,5 @@ local.properties
 .idea/modules.xml
 # Comment next line if keeping position of elements in Navigation Editor is relevant for you
 .idea/navEditor.xml
+src/main/kotlin/br.com.lucascordeiro.klever/generated/main/
+src/main/kotlin/br.com.lucascordeiro.klever/generated/main/grpc/br/com/lucascordeiro/klever/BookServiceGrpc.java

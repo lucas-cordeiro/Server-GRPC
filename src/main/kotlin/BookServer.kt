@@ -1,5 +1,3 @@
-package br.com.lucascordeiro.klever.generated.main.grpckt.br.com.lucascordeiro.klever
-
 import br.com.lucascordeiro.klever.Book
 import br.com.lucascordeiro.klever.BookServiceGrpcKt
 import br.com.lucascordeiro.klever.GetBookRequest
