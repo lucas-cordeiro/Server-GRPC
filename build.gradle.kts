@@ -68,7 +68,7 @@ java {
 }
 
 application {
-    mainClassName = "br.com.lucascordeiro.klever.generated.main.grpckt.br.com.lucascordeiro.klever.BookServerKt"
+    mainClassName = "br.com.lucascordeiro.klever.KleverServerKt"
 }
 
 protobuf {

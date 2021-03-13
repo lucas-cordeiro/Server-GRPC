@@ -1,3 +1,5 @@
+package br.com.lucascordeiro.klever
+
 import br.com.lucascordeiro.klever.*
 import com.google.auth.oauth2.GoogleCredentials
 import com.google.cloud.firestore.Firestore
@@ -120,6 +122,7 @@ fun main() {
 //        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
         .setCredentials(GoogleCredentials.getApplicationDefault())
         .setDatabaseUrl("https://klever-coin.firebaseio.com/")
+        .setProjectId("klever-coin")
         .build()
 
     FirebaseApp.initializeApp(options)
