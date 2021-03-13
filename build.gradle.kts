@@ -25,6 +25,8 @@ allprojects {
 }
 
 dependencies {
+
+    //Server GRPC
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -41,6 +43,9 @@ dependencies {
     implementation("com.google.protobuf:protobuf-gradle-plugin:0.8.13")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+
+    //Firebase
+    implementation("com.google.firebase:firebase-admin:7.1.1")
 }
 
 group = "br.com.lucascordeiro.klever"
