@@ -2,6 +2,7 @@ package br.com.lucascordeiro.klever
 
 import br.com.lucascordeiro.klever.*
 import com.google.auth.oauth2.GoogleCredentials
+import com.google.cloud.firestore.FieldValue
 import com.google.cloud.firestore.Firestore
 import com.google.cloud.firestore.ListenerRegistration
 import com.google.firebase.FirebaseApp
@@ -54,6 +55,7 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
     }
 
     private class KleverService(val firestore: Firestore, scope: CoroutineScope) : KleverServiceGrpcKt.KleverServiceCoroutineImplBase() {
+
         override fun getBankAccount(request: GetBankAccountRequest): Flow<BankAccount> = callbackFlow {
             val bankAccountId = request.bankAccountId.toString()
             println("getBankAccount: $bankAccountId")
@@ -66,7 +68,7 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
 
                 if (snapshot != null && snapshot.exists()) {
                     val bankAccount = BankAccount.newBuilder()
-                        .setId(snapshot.id.toLong())
+                        .setId(snapshot.id)
                         .setBalance(snapshot.getDouble("balance")?:0.0)
                         .setName(snapshot.getString("name"))
                         .setProfilePicUrl(snapshot.getString("profilePicUrl"))
@@ -97,7 +99,7 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
                 if (coinsSnapshot != null && coinsSnapshot.documents.isNotEmpty()) {
                     val coins = coinsSnapshot.documents.map {
                         Coin.newBuilder()
-                            .setId(it.id.toLong())
+                            .setId(it.id)
                             .setName(it.getString("name"))
                             .setShortName(it.getString("shortName"))
                             .setPrice(it.getDouble("price")?:0.0)
@@ -146,8 +148,8 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
                 if (coinsSnapshot != null && coinsSnapshot.documents.isNotEmpty()) {
                     val bankAccountCoins = coinsSnapshot.documents.map {
                         BankAccountCoin.newBuilder()
-                            .setId(it.id.toLong())
-                            .setCoinId(it.getLong("coinId")?:0L)
+                            .setId(it.id)
+                            .setCoinId(it.getString("coinId"))
                             .setAmount(it.getDouble("amount")?:0.0)
                             .build()
                     }
@@ -189,10 +191,10 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
         }
 
         override fun getBankAccountTransactions(request: GetBankAccountTransactionsRequest): Flow<ListOfBankAccountTransaction> = callbackFlow {
-            val bankAccountId = request.bankAccountId.toString()
+            val bankAccountId = request.bankAccountId
             println("getBankAccountTransactions: $bankAccountId")
 
-            val transactionsRef = firestore.collection("transactions").whereEqualTo("bankAccountId", bankAccountId.toLong())
+            val transactionsRef = firestore.collection("transactions").whereEqualTo("bankAccountId", bankAccountId)
             val listenerRegistration = transactionsRef.addSnapshotListener { snapshot, error ->
                 if (error != null)
                     throw error
@@ -200,13 +202,14 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
                 if (snapshot != null && snapshot.documents.isNotEmpty()) {
                     val transactions = snapshot.documents.map {
                         BankAccountTransaction.newBuilder()
-                            .setId(it.id.toLong())
+                            .setId(it.id)
                             .setAmount(it.getDouble("amount")?:0.0)
-                            .setBankAccountId(bankAccountId.toLong())
+                            .setBankAccountId(bankAccountId)
                             .setTransferDate(it.getLong("transferDate")?:0L)
+                            .setCredit(it.getBoolean("credit")?:false)
                             .build()
                     }
-                    println("transactions ${transactions.size}")
+
                     sendBlocking(ListOfBankAccountTransaction
                         .newBuilder()
                         .setCount(transactions.size.toLong())
@@ -227,6 +230,122 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
                 println("close")
                 listenerRegistration.remove()
             }
+        }
+
+        override fun getBankAccountCoinsTransactions(request: GetBankAccountCoinsTransactionsRequest): Flow<ListOfBankAccountCoinTransaction> =  callbackFlow {
+            val bankAccountId = request.bankAccountId
+            val coinId = request.coinId
+            println("getBankAccountTransactions: $bankAccountId")
+
+            val transactionsRef = firestore.collection("bankaccounts").document(bankAccountId).collection("coins").document(coinId).collection("transactions")
+            val listenerRegistration = transactionsRef.addSnapshotListener { snapshot, error ->
+                if (error != null)
+                    throw error
+
+                if (snapshot != null && snapshot.documents.isNotEmpty()) {
+                    val transactions = snapshot.documents.map {
+                        BankAccountCoinTransaction.newBuilder()
+                            .setId(it.id)
+                            .setAmount(it.getDouble("amount")?:0.0)
+                            .setCredit(it.getBoolean("credit")?:false)
+                            .setTransferDate(it.getLong("transferDate")?:0L)
+                            .build()
+                    }
+
+                    sendBlocking(
+                        ListOfBankAccountCoinTransaction
+                        .newBuilder()
+                        .setCount(transactions.size.toLong())
+                        .addAllData(transactions)
+                        .build()
+                    )
+                }else{
+                    sendBlocking(ListOfBankAccountCoinTransaction
+                        .newBuilder()
+                        .setCount(0L)
+                        .addAllData(emptyList())
+                        .build()
+                    )
+                }
+            }
+
+            awaitClose {
+                println("close")
+                listenerRegistration.remove()
+            }
+        }
+
+        override suspend fun addBankAccountTransaction(request: BankAccountTransaction): BankAccountTransaction {
+            println("addBankAccountTransaction")
+
+            val amount = request.amount * if(request.credit) 1 else -1
+            val requestHash = HashMap<String, Any?>()
+            requestHash["bankAccountId"] = request.bankAccountId
+            requestHash["credit"] = request.credit
+            requestHash["amount"] = amount
+            requestHash["transferDate"] = System.currentTimeMillis() / 1000
+
+            val documentRef = firestore.collection("transactions").add(requestHash).get()
+
+            firestore.collection("bankaccounts").document(request.bankAccountId).update("balance",  FieldValue.increment(amount)).get()
+
+            return BankAccountTransaction
+                .newBuilder(request)
+                .setId( documentRef.id)
+                .setTransferDate(System.currentTimeMillis() / 1000)
+                .build()
+        }
+
+        override suspend fun addBankAccountCoinTransaction(request: BankAccountCoinTransaction): BankAccountCoinTransaction {
+            println("addBankAccountCoinTransaction")
+            val amount = request.amount * if(request.credit) 1 else -1
+
+            val requestHash = HashMap<String, Any?>()
+            requestHash["credit"] = request.credit
+            requestHash["amount"] = amount
+            requestHash["transferDate"] = System.currentTimeMillis() / 1000
+
+            val bankAccountCoinSnapshotOld = firestore.collection("bankaccounts").document(request.bankAccountId).collection("coins").document(request.coinId).get().get()
+            val bankAccountCoinOld =  BankAccountCoin.newBuilder()
+                .setAmount(bankAccountCoinSnapshotOld.getDouble("amount")?:0.0)
+                .setCoinId(bankAccountCoinSnapshotOld.getString("coinId"))
+                .build()
+
+            firestore.collection("bankaccounts").document(request.bankAccountId).collection("coins").document(request.coinId).update("amount",  FieldValue.increment(amount))
+            val bankAccountCoinSnapshot = firestore.collection("bankaccounts").document(request.bankAccountId).collection("coins").document(request.coinId).get().get()
+
+            val bankAccountCoin =  BankAccountCoin.newBuilder()
+                .setAmount(bankAccountCoinSnapshot.getDouble("amount")?:0.0)
+                .setCoinId(bankAccountCoinSnapshot.getString("coinId"))
+                .build()
+
+            val coinSnapshot = firestore.collection("coins").document(bankAccountCoin.coinId).get().get()
+            val coin = Coin.newBuilder()
+                .setId(coinSnapshot.id)
+                .setName(coinSnapshot.getString("name"))
+                .setShortName(coinSnapshot.getString("shortName"))
+                .setPrice(coinSnapshot.getDouble("price")?:0.0)
+                .setPercent(coinSnapshot.getDouble("percent")?.toFloat()?:0f)
+                .setIconUrl(coinSnapshot.getString("iconUrl"))
+                .build()
+
+            val balance = amount * coin.price
+            firestore.collection("bankaccounts").document(request.bankAccountId).update("balance",  FieldValue.increment(balance)).get()
+
+            val documentRef = firestore
+                .collection("bankaccounts")
+                .document(request.bankAccountId)
+                .collection("coins")
+                .document(request.coinId)
+                .collection("transactions")
+                .add(requestHash)
+                .get()
+
+            return BankAccountCoinTransaction
+                .newBuilder(request)
+                .setId( documentRef.id)
+                .setTransferDate(System.currentTimeMillis() / 1000)
+                .build()
         }
     }
 }
