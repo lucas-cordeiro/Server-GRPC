@@ -350,9 +350,9 @@ fun main() {
 //    val serviceAccount = FileInputStream("C:/Users/ITX/Documents/Klever/klever-coin-firebase-adminsdk-5yvr5-fb477f4036.json")
 
     val options = FirebaseOptions.builder()
-        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+//        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
         .setCredentials(GoogleCredentials.getApplicationDefault())
-//        .setDatabaseUrl("https://klever-coin.firebaseio.com/")
+        .setDatabaseUrl("https://klever-coin.firebaseio.com/")
         .setProjectId("klever-coin")
         .build()
 
