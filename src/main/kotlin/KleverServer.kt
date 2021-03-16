@@ -92,52 +92,49 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
             val bankAccountCoinsResponse: MutableList<BankAccountCoin> = ArrayList()
 
             val coinsRef =  firestore.collection("coins").whereArrayContains("bankAccountsId", request.bankAccountId)
-            val coinsListener = coinsRef.addSnapshotListener { coinsSnapshot, error ->
-                if (error != null)
-                    throw error
+            val coinsSnapshot = coinsRef.get().get()
 
-                if (coinsSnapshot != null && coinsSnapshot.documents.isNotEmpty()) {
-                    val coins = coinsSnapshot.documents.map {
-                        Coin.newBuilder()
-                            .setId(it.id)
-                            .setName(it.getString("name"))
-                            .setShortName(it.getString("shortName"))
-                            .setPrice(it.getDouble("price")?:0.0)
-                            .setPercent(it.getDouble("percent")?.toFloat()?:0f)
-                            .setIconUrl(it.getString("iconUrl"))
+            if (coinsSnapshot != null && coinsSnapshot.documents.isNotEmpty()) {
+                val coins = coinsSnapshot.documents.map {
+                    Coin.newBuilder()
+                        .setId(it.id)
+                        .setName(it.getString("name"))
+                        .setShortName(it.getString("shortName"))
+                        .setPrice(it.getDouble("price")?:0.0)
+                        .setPercent(it.getDouble("percent")?.toFloat()?:0f)
+                        .setIconUrl(it.getString("iconUrl"))
+                        .build()
+                }
+
+                println("Coins: ${coins.size}")
+
+                coins.forEach { coin ->
+                    val index = bankAccountCoinsResponse.indexOfFirst { it.coinId == coin.id }
+                    if(index >= 0){
+                        val bankAccountCoin = bankAccountCoinsResponse[index]
+                        bankAccountCoinsResponse[index] = BankAccountCoin.newBuilder()
+                            .setId(bankAccountCoin.id)
+                            .setCoin(coin)
+                            .setCoinId(coin.id)
+                            .setAmount(bankAccountCoin.amount)
                             .build()
-                    }
 
-                    println("Coins: ${coins.size}")
-
-                    coins.forEach { coin ->
-                        val index = bankAccountCoinsResponse.indexOfFirst { it.coinId == coin.id }
-                        if(index >= 0){
-                            val bankAccountCoin = bankAccountCoinsResponse[index]
-                            bankAccountCoinsResponse[index] = BankAccountCoin.newBuilder()
-                                .setId(bankAccountCoin.id)
+                    }else{
+                        bankAccountCoinsResponse.add(
+                            BankAccountCoin.newBuilder()
                                 .setCoin(coin)
                                 .setCoinId(coin.id)
-                                .setAmount(bankAccountCoin.amount)
                                 .build()
-
-                        }else{
-                            bankAccountCoinsResponse.add(
-                                BankAccountCoin.newBuilder()
-                                    .setCoin(coin)
-                                    .setCoinId(coin.id)
-                                    .build()
-                            )
-                        }
+                        )
                     }
-
-                    sendBlocking(
-                        ListOfBankAccountCoin.newBuilder()
-                            .setCount(bankAccountCoinsResponse.size.toLong())
-                            .addAllData(bankAccountCoinsResponse)
-                            .build()
-                    )
                 }
+
+                sendBlocking(
+                    ListOfBankAccountCoin.newBuilder()
+                        .setCount(bankAccountCoinsResponse.size.toLong())
+                        .addAllData(bankAccountCoinsResponse)
+                        .build()
+                )
             }
 
             val bankAccountCoinsRef = firestore.collection("bankaccounts").document(bankAccountId).collection("coins")
@@ -186,7 +183,6 @@ class KleverServer(val port: Int, val firestore: Firestore): CoroutineScope {
 
             awaitClose {
                 bankAccountCoinsListener.remove()
-                coinsListener.remove()
             }
         }
 
@@ -354,9 +350,9 @@ fun main() {
 //    val serviceAccount = FileInputStream("C:/Users/ITX/Documents/Klever/klever-coin-firebase-adminsdk-5yvr5-fb477f4036.json")
 
     val options = FirebaseOptions.builder()
-//        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
         .setCredentials(GoogleCredentials.getApplicationDefault())
-        .setDatabaseUrl("https://klever-coin.firebaseio.com/")
+//        .setDatabaseUrl("https://klever-coin.firebaseio.com/")
         .setProjectId("klever-coin")
         .build()
 
